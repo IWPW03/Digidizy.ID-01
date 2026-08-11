@@ -1,4 +1,4 @@
-```javascript
+
 /* =========================================================
    WID Inventory — Drink Store
    Frontend: Vanilla JavaScript
