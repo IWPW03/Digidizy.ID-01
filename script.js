@@ -5,7 +5,7 @@
 
 /* URL Google Apps Script yang menjadi sumber data.
    Ganti nilai konstanta ini dengan URL Web App Anda. */
-const API_URL = "MASUKKAN_URL_APPS_SCRIPT_DI_SINI";
+const API_URL = "https://script.google.com/macros/s/AKfycbzKFLnMqtdO3XGDjZRgMOSPMqhmzojIHvv9_HN2wwoDGvndnRqRFREOlE1UraTKwWzO4A/exec";
 
 /* Penanganan error agar aplikasi tidak crash saat API bermasalah */
 const SafeState = {
