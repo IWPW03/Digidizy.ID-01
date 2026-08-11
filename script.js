@@ -5,7 +5,7 @@
 
 /* URL Google Apps Script yang menjadi sumber data.
    Ganti nilai konstanta ini dengan URL Web App Anda. */
-const API_URL = "https://script.google.com/macros/s/AKfycbwum3edNV1Rdw3715kvKIIJk-4nY406pB2Uvmv4HgUaoVIgNInKWMiVyrmch5t1VsRWeg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzKFLnMqtdO3XGDjZRgMOSPMqhmzojIHvv9_HN2wwoDGvndnRqRFREOlE1UraTKwWzO4A/exec";
 
 /* Penanganan error agar aplikasi tidak crash saat API bermasalah */
 const SafeState = {
@@ -29,6 +29,7 @@ function formatRupiah(value) {
 /* Escape teks agar aman dimasukkan ke innerHTML */
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
+
   return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -106,7 +107,14 @@ async function getProducts() {
     SafeState.products = rows.map((r) => ({
       kode: pick(r, ["kode", "Kode", "code", "id", "ID"], ""),
       nama: pick(r, ["nama", "Nama", "produk", "Produk", "name"], "Tanpa Nama"),
-      harga: pick(r, ["harga", "Harga", "price", "Price"], 0),
+     harga: pick(r, [
+  "Harga Jual",
+  "hargaJual",
+  "harga",
+  "Harga",
+  "price",
+  "Price"
+], 0),
       status: pick(r, ["status", "Status", "aktif", "Aktif"], ""),
     }));
     return SafeState.products;
@@ -124,8 +132,25 @@ async function getMaterials() {
     const rows = await fetchAction("bahan");
     // Normalisasi tiap baris bahan
     SafeState.materials = rows.map((r) => {
-      const stok = Number(pick(r, ["stok", "Stok", "jumlah", "Jumlah", "qty", "stock"], 0)) || 0;
-      const min = Number(pick(r, ["minimum", "min", "minStok", "stokMinimum", "batasMinimum", "minimumStok"], 0)) || 0;
+      const stok = Number(pick(r, [
+  "Stok Saat Ini",
+  "stokSaatIni",
+  "stok",
+  "Stok",
+  "jumlah",
+  "Jumlah",
+  "qty",
+  "stock"
+], 0)) || 0;
+
+const min = Number(pick(r, [
+  "Minimum Stok",
+  "minimumStok",
+  "minStok",
+  "minimum",
+  "min",
+  "batasMinimum"
+], 0)) || 0;
       return {
         kode: pick(r, ["kode", "Kode", "code", "id", "ID"], ""),
         nama: pick(r, ["nama", "Nama", "bahan", "Bahan", "name"], "Tanpa Nama"),
