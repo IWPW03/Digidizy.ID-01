@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WID Inventory — Drink Store</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar (desktop) / topbar (mobile) -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-icon">🧋</span>
+        <span class="brand-name">WID INVENTORY</span>
+      </div>
+
+      <nav class="nav" aria-label="Navigasi utama">
+        <a href="#dashboard" class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">🏠</span><span>Dashboard</span>
+        </a>
+        <a href="#produk" class="nav-item" data-view="produk">
+          <span class="nav-icon">📦</span><span>Produk</span>
+        </a>
+        <a href="#bahan" class="nav-item" data-view="bahan">
+          <span class="nav-icon">🧂</span><span>Bahan</span>
+        </a>
+        <a href="#pembelian" class="nav-item" data-view="pembelian">
+          <span class="nav-icon">📥</span><span>Pembelian</span>
+        </a>
+        <a href="#penjualan" class="nav-item" data-view="penjualan">
+          <span class="nav-icon">📤</span><span>Penjualan</span>
+        </a>
+        <a href="#laporan" class="nav-item" data-view="laporan">
+          <span class="nav-icon">📊</span><span>Laporan</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="footer-label">v1.0</span>
+      </div>
+    </aside>
+
+    <!-- Mobile top navigation -->
+    <div class="mobile-topbar">
+      <div class="brand">
+        <span class="brand-icon">🧋</span>
+        <span class="brand-name">WID INVENTORY</span>
+      </div>
+      <button class="menu-toggle" id="menuToggle" aria-label="Buka menu" aria-expanded="false">
+        <span class="menu-bar"></span>
+        <span class="menu-bar"></span>
+        <span class="menu-bar"></span>
+      </button>
+    </div>
+
+    <!-- Overlay for mobile menu -->
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- Main content -->
+    <main class="main">
+      <!-- Header -->
+      <header class="page-header">
+        <h1 id="pageTitle">Dashboard</h1>
+        <p id="pageSubtitle">Selamat datang di WID Inventory</p>
+      </header>
+
+      <!-- Status banner for loading / error -->
+      <div class="status-banner" id="statusBanner" hidden></div>
+
+      <!-- Dashboard view -->
+      <section class="view view-dashboard active" id="view-dashboard">
+        <!-- Summary cards -->
+        <div class="cards">
+          <article class="card">
+            <div class="card-top">
+              <span class="card-icon">📦</span>
+              <span class="card-label">Total Produk</span>
+            </div>
+            <p class="card-value" id="totalProduk">0</p>
+            <span class="card-sub">Produk aktif</span>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="card-icon">🧂</span>
+              <span class="card-label">Total Bahan</span>
+            </div>
+            <p class="card-value" id="totalBahan">0</p>
+            <span class="card-sub">Jenis bahan</span>
+          </article>
+
+          <article class="card card-sales">
+            <div class="card-top">
+              <span class="card-icon">📤</span>
+              <span class="card-label">Penjualan Hari Ini</span>
+            </div>
+            <p class="card-value" id="penjualanHariIni">Rp 0</p>
+            <span class="card-sub">Total transaksi</span>
+          </article>
+
+          <article class="card card-warn">
+            <div class="card-top">
+              <span class="card-icon">⚠️</span>
+              <span class="card-label">Stok Menipis</span>
+            </div>
+            <p class="card-value" id="stokMenipis">0</p>
+            <span class="card-sub">Perlu restok</span>
+          </article>
+        </div>
+
+        <!-- Two-column area -->
+        <div class="grid-two">
+          <!-- Penjualan Hari Ini -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Penjualan Hari Ini</h2>
+              <span class="panel-tag" id="salesDate">—</span>
+            </div>
+            <div class="panel-body sales-body">
+              <p class="sales-amount" id="salesAmount">Rp 0</p>
+              <p class="sales-note">Data penjualan akan otomatis terhubung dari API.</p>
+            </div>
+          </article>
+
+          <!-- Stok Menipis -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Stok Menipis</h2>
+              <span class="panel-tag" id="lowCount">0 item</span>
+            </div>
+            <div class="panel-body">
+              <ul class="stock-list" id="lowStockList">
+                <li class="stock-empty">Memuat data bahan...</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+
+        <!-- Produk table -->
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Produk</h2>
+            <span class="panel-tag" id="produkCount">0 produk</span>
+          </div>
+          <div class="panel-body panel-table">
+            <div class="table-wrap">
+              <table class="data-table" id="produkTable">
+                <thead>
+                  <tr>
+                    <th>Kode</th>
+                    <th>Produk</th>
+                    <th class="th-right">Harga</th>
+                    <th class="th-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="produkTbody">
+                  <tr><td colspan="4" class="empty-cell">Memuat data produk...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- Other views -->
+      <section class="view" id="view-produk">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Daftar Produk</h2>
+            <span class="panel-tag" id="produkCount2">0 produk</span>
+          </div>
+          <div class="panel-body panel-table">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Kode</th>
+                    <th>Produk</th>
+                    <th class="th-right">Harga</th>
+                    <th class="th-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="produkTbody2">
+                  <tr><td colspan="4" class="empty-cell">Memuat data produk...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-bahan">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Daftar Bahan</h2>
+            <span class="panel-tag" id="bahanCount">0 bahan</span>
+          </div>
+          <div class="panel-body panel-table">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Kode</th>
+                    <th>Bahan</th>
+                    <th class="th-right">Stok</th>
+                    <th class="th-right">Minimum</th>
+                    <th class="th-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="bahanTbody">
+                  <tr><td colspan="5" class="empty-cell">Memuat data bahan...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-pembelian">
+        <article class="panel placeholder-panel">
+          <div class="panel-body placeholder-body">
+            <span class="ph-icon">📥</span>
+            <h2>Pembelian</h2>
+            <p>Modul pencatatan pembelian bahan akan tersedia di versi berikutnya.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-penjualan">
+        <article class="panel placeholder-panel">
+          <div class="panel-body placeholder-body">
+            <span class="ph-icon">📤</span>
+            <h2>Penjualan</h2>
+            <p>Modul pencatatan penjualan akan tersedia di versi berikutnya.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-laporan">
+        <article class="panel placeholder-panel">
+          <div class="panel-body placeholder-body">
+            <span class="ph-icon">📊</span>
+            <h2>Laporan</h2>
+            <p>Modul laporan dan rekap transaksi akan tersedia di versi berikutnya.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <!-- Mobile bottom navigation -->
+    <nav class="bottom-nav" aria-label="Navigasi mobile">
+      <a href="#dashboard" class="bn-item active" data-view="dashboard">
+        <span class="bn-icon">🏠</span><span class="bn-label">Dashboard</span>
+      </a>
+      <a href="#produk" class="bn-item" data-view="produk">
+        <span class="bn-icon">📦</span><span class="bn-label">Produk</span>
+      </a>
+      <a href="#bahan" class="bn-item" data-view="bahan">
+        <span class="bn-icon">🧂</span><span class="bn-label">Bahan</span>
+      </a>
+      <a href="#penjualan" class="bn-item" data-view="penjualan">
+        <span class="bn-icon">📤</span><span class="bn-label">Jual</span>
+      </a>
+      <a href="#laporan" class="bn-item" data-view="laporan">
+        <span class="bn-icon">📊</span><span class="bn-label">Laporan</span>
+      </a>
+    </nav>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
