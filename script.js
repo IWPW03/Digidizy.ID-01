@@ -29,6 +29,10 @@ const SafeState = {
   purchases: [],
   sales: [],
   transactions: [],
+  /* Melacak apakah ada error saat mengakses API,
+     agar dashboard bisa menampilkan pesan yang benar
+     (bukan menuduh "data kosong" padahal sebenarnya gagal). */
+  lastErrors: [],
 };
 
 
@@ -109,45 +113,42 @@ function pick(obj, keys, fallback = "") {
    4. STATUS BANNER
 ========================================================= */
 
+/* Render banner + (opsional) tombol "Coba lagi" */
+function renderBanner(type, message, showRetry) {
+  const banner = $("statusBanner");
+  if (!banner) return;
+  banner.hidden = false;
+  banner.className = "status-banner " + type;
+  banner.textContent = message || "";
+
+  if (showRetry) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Coba lagi";
+    btn.className = "retry-btn";
+    btn.addEventListener("click", () => {
+      banner.removeChild(btn);
+      loadDashboard();
+    });
+    banner.appendChild(btn);
+  }
+}
+
 function showLoading(message = "Memuat data...") {
-
-  const banner = $("statusBanner");
-
-  if (!banner) {
-    return;
-  }
-
-  banner.hidden = false;
-  banner.className = "status-banner loading";
-  banner.textContent = message;
+  renderBanner("loading", message, false);
 }
 
-
-function showError(message) {
-
-  const banner = $("statusBanner");
-
-  if (!banner) {
-    return;
-  }
-
-  banner.hidden = false;
-  banner.className = "status-banner error";
-
-  banner.textContent =
-    message ||
-    "Gagal mengambil data dari server.";
+function showError(message, showRetry) {
+  renderBanner(
+    "error",
+    message || "Gagal mengambil data dari server. Silakan coba lagi.",
+    showRetry !== false
+  );
 }
-
 
 function hideStatus() {
-
   const banner = $("statusBanner");
-
-  if (!banner) {
-    return;
-  }
-
+  if (!banner) return;
   banner.hidden = true;
   banner.className = "status-banner";
   banner.textContent = "";
@@ -352,16 +353,23 @@ function fetchAction(action) {
     };
 
 
-    /* Error script */
-
+    /* Error script.
+       Catatan: jika Apps Script belum di-deploy dengan akses
+       "Anyone", server akan mengembalikan halaman login HTML.
+       Browser mencoba mengeksekusinya sebagai JS dan mencatat
+       "Unexpected end of input" di console — itu berasal dari
+       resource API, bukan dari script.js kita. Kita tangkap
+       lewat onerror dan beri pesan yang jelas. */
     script.onerror = function() {
 
       cleanup();
 
       reject(
         new Error(
-          "Gagal menghubungi API: " +
-          action
+          "Tidak dapat mengambil data dari API (" +
+            action +
+            "). Pastikan Google Apps Script sudah di-deploy " +
+            "dengan akses 'Anyone' (anonim)."
         )
       );
     };
@@ -494,7 +502,9 @@ async function getProducts() {
       error
     );
 
-    SafeState.products = [];
+        SafeState.lastErrors.push({ source: "getProducts gagal:", error: error.message });
+
+SafeState.products = [];
 
     return [];
 
@@ -621,7 +631,9 @@ async function getMaterials() {
       error
     );
 
-    SafeState.materials = [];
+        SafeState.lastErrors.push({ source: "getMaterials gagal:", error: error.message });
+
+SafeState.materials = [];
 
     return [];
 
@@ -659,7 +671,9 @@ async function getSales() {
       error
     );
 
-    SafeState.sales = [];
+        SafeState.lastErrors.push({ source: "getSales gagal:", error: error.message });
+
+SafeState.sales = [];
 
     return [];
 
@@ -691,7 +705,9 @@ async function getPurchases() {
       error
     );
 
-    SafeState.purchases = [];
+        SafeState.lastErrors.push({ source: "getPurchases gagal:", error: error.message });
+
+SafeState.purchases = [];
 
     return [];
 
@@ -1304,6 +1320,8 @@ async function loadDashboard() {
     "Memuat data inventory..."
   );
 
+  /* Reset catatan error dari load sebelumnya */
+  SafeState.lastErrors = [];
 
   try {
 
@@ -1433,13 +1451,23 @@ async function loadDashboard() {
      * Status
      */
 
-    if (
+    if (SafeState.lastErrors.length > 0) {
+      /* Ada error saat mengakses API (mis. endpoint
+         mengembalikan halaman login). Tampilkan pesan
+         yang menjelaskan kemungkinan penyebabnya. */
+      showError(
+        "Gagal mengambil data dari server. Pastikan Google Apps Script " +
+          "sudah di-deploy dengan akses 'Anyone' (anonim), lalu coba lagi.",
+        true
+      );
+    } else if (
       products.length === 0 &&
       materials.length === 0
     ) {
 
       showError(
-        "API berhasil dipanggil, tetapi data produk dan bahan masih kosong."
+        "API berhasil dipanggil, tetapi data produk dan bahan masih kosong.",
+        true
       );
 
     } else {
@@ -1456,10 +1484,10 @@ async function loadDashboard() {
       error
     );
 
-
     showError(
       error.message ||
-      "Gagal memuat dashboard."
+      "Gagal memuat dashboard.",
+      true
     );
 
   }

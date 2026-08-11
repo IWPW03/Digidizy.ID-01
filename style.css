@@ -173,6 +173,24 @@ ul { list-style: none; }
   border-color: #fecaca;
 }
 
+/* Tombol "Coba lagi" di dalam banner error */
+.retry-btn {
+  margin-left: 12px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--surface);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.retry-btn:hover {
+  background: var(--danger);
+  color: var(--surface);
+}
+
 /* ===================== Views ===================== */
 .view { display: none; animation: fadeIn 0.2s ease; }
 .view.active { display: block; }

@@ -78,9 +78,34 @@ Format respons yang didukung oleh aplikasi:
 `stok`, `minimum` (minimum stok). Bahan dianggap **menipis** bila
 `stok <= minimum`.
 
+## Penyelesaian Masalah (Troubleshooting)
+
+Jika dashboard menampilkan pesan **"Gagal mengambil data dari server"**
+dan di console muncul **`Uncaught SyntaxError: Unexpected end of input`**,
+penyebabnya hampir selalu **deployment Google Apps Script belum di-set ke
+akses publik**, sehingga endpoint mengembalikan halaman login HTML (bukan
+JSON). Browser mencoba mengeksekusi HTML tersebut sebagai JavaScript lewat
+tag `<script>` JSONP → muncul SyntaxError tersebut (itu berasal dari
+resource API, bukan dari `script.js`).
+
+Langkah perbaikan di sisi Google Apps Script:
+
+1. Buka project Apps Script → **Deploy** → **Manage deployments**.
+2. Pilih deployment → **Edit** (ikon pensil).
+3. Set:
+   - **Execute as:** Me
+   - **Who has access:** Anyone
+4. **Deploy** → salin URL Web App baru.
+5. Perbarui `API_URL` di `script.js` dengan URL tersebut.
+6. Muat ulang halaman (atau klik tombol **Coba lagi** di banner error).
+
 ## Catatan
 
-- Nilai **Penjualan Hari Ini** untuk tahap ini menampilkan `Rp 0`. Struktur
-  kode sudah disiapkan agar nantinya bisa mengambil data penjualan dari API
-  (lihat fungsi `getTodaySales()` di `script.js`).
-- Tidak ada kredensial atau rahasia yang disimpan di repository. 
+- Aplikasi menggunakan **JSONP** (tag `<script>`) untuk mengambil data
+  dari Google Apps Script, karena `fetch()` biasa terkena batasan CORS.
+  Karena itu, `doGet` di Apps Script harus membungkus respons dalam
+  callback, contoh:
+  `return ContentService.createTextOutput(callback + "(" + JSON.stringify({success:true, data:rows}) + ")");`
+- Nilai **Penjualan Hari Ini** untuk tahap ini menampilkan `Rp 0` bila
+  belum ada data penjualan dari API (lihat fungsi `getSales()` di `script.js`).
+- Tidak ada kredensial atau rahasia yang disimpan di repository.
