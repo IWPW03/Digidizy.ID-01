@@ -173,108 +173,116 @@ function hideStatus() {
    pembatasan CORS seperti fetch().
 ========================================================= */
 
-function fetchAction(action) {
+/* Cache promise per-action agar request yang dipanggil
+   bersamaan (mis. loadDashboard + switchView) tidak
+   mengirim fetch ganda ke endpoint yang sama. Apps Script
+   membangkitkan user_content_key sekali pakai per request
+   /exec; fetch ganda ke redirect-URL yang sama -> 404. */
+const _fetchCache = new Map();
 
-  return new Promise((resolve, reject) => {
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 900;
 
-    if (!API_URL) {
-
-      reject(
-        new Error("API_URL belum dikonfigurasi.")
-      );
-
-      return;
-    }
-
-
-    const separator =
-      API_URL.includes("?")
-        ? "&"
-        : "?";
-
-    const fetchUrl =
-      API_URL +
-      separator +
-      "action=" +
-      encodeURIComponent(action);
-
-
-    /* Coba fetch() terlebih dahulu.
-       Apps Script Web App dengan akses "Anyone" umumnya
-       mengizinkan CORS, sehingga fetch() bisa membaca body
-       dan kita mendapatkan pesan error yang lebih jelas
-       (mis. status 401 / halaman login). Jika fetch gagal
-       karena CORS, fallback ke JSONP. */
-    fetch(fetchUrl, { method: "GET" })
-      .then((res) => {
-
-        const ct =
-          (res.headers.get("content-type") || "")
-            .toLowerCase();
-
-        const isHtml =
-          ct.includes("text/html") ||
-          ct.includes("application/xhtml");
-
-        /* Jika respons berupa HTML (biasanya halaman login
-           Google) atau status tidak ok, anggap endpoint belum
-           di-deploy dengan akses publik. */
-        if (isHtml || !res.ok) {
-
-          throw new Error(
-            "Endpoint '" + action +
-              "' mengembalikan halaman login/error (status " +
-              res.status + "). Pastikan Google Apps Script " +
-              "sudah di-deploy dengan akses 'Anyone' (anonim)."
-          );
-
-        }
-
-        return res.text();
-
-      })
-      .then((text) => {
-
-        let data;
-
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-
-          reject(
-            new Error(
-              "Respons '" + action +
-                "' bukan JSON yang valid. Periksa format " +
-                "output doGet di Apps Script."
-            )
-          );
-
-          return;
-        }
-
-        resolve(normalizeResponse(data, action));
-
-      })
-      .catch((err) => {
-
-        /* Jika error berasal dari CORS (TypeError: Failed to fetch),
-           coba JSONP sebagai fallback. Error lain (mis. halaman
-           login HTML) langsung ditolak dengan pesan yang jelas. */
-        if (
-          err instanceof TypeError &&
-          /fetch|network|load failed/i.test(err.message)
-        ) {
-          jsonpFetch(action).then(resolve, reject);
-          return;
-        }
-
-        reject(err);
-
-      });
-
-  });
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
+function fetchAction(action) {
+
+  if (_fetchCache.has(action)) {
+    return _fetchCache.get(action);
+  }
+
+  const p = fetchActionInner(action).finally(() => {
+    _fetchCache.delete(action);
+  });
+
+  _fetchCache.set(action, p);
+  return p;
+}
+
+async function fetchActionInner(action) {
+
+  if (!API_URL) {
+    throw new Error("API_URL belum dikonfigurasi.");
+  }
+
+  const separator =
+    API_URL.includes("?") ? "&" : "?";
+  const fetchUrl =
+    API_URL +
+    separator +
+    "action=" +
+    encodeURIComponent(action);
+
+  let lastErr = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+
+    try {
+
+      const res = await fetch(fetchUrl, { method: "GET" });
+
+      const ct =
+        (res.headers.get("content-type") || "")
+          .toLowerCase();
+
+      const isHtml =
+        ct.includes("text/html") ||
+        ct.includes("application/xhtml");
+
+      if (isHtml || !res.ok) {
+        const err = new Error(
+          "Endpoint '" + action +
+            "' mengembalikan halaman login/error (status " +
+            res.status + "). Pastikan Google Apps Script " +
+            "sudah di-deploy dengan akses 'Anyone' (anonim)."
+        );
+        err.status = res.status;
+        err.transient =
+          res.status === 404 ||
+          res.status === 429 ||
+          res.status >= 500;
+        throw err;
+      }
+
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(
+          "Respons '" + action +
+            "' bukan JSON yang valid. Periksa format " +
+            "output doGet di Apps Script."
+        );
+      }
+
+      return normalizeResponse(data, action);
+
+    } catch (err) {
+
+      if (
+        err instanceof TypeError &&
+        /fetch|network|load failed/i.test(err.message)
+      ) {
+        return jsonpFetch(action);
+      }
+
+      lastErr = err;
+
+      if (err.transient && attempt < MAX_RETRIES) {
+        await sleep(RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw lastErr;
+}
 
 /* Normalisasi berbagai format respons API menjadi array. */
 function normalizeResponse(response, action) {
