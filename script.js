@@ -2227,16 +2227,21 @@ function normalizeSaleRow(row) {
 /* Normalisasi baris pembelian untuk tampilan riwayat.
    Backend menulis header: id, tanggal, bahanId, qty,
    satuan, harga, supplier, keterangan. bahanId adalah kode;
-   kita terjemahkan ke nama bahan bila tersedia di state. */
+   kita terjemahkan ke nama bahan bila tersedia di state.
+   Total tidak disimpan backend -> hitung qty x harga. */
 function normalizePurchaseRow(row) {
   const kode = pick(row, ["bahanId", "Bahan", "bahan", "Kode", "kode"], "");
   const bahan = findMaterialByKode(kode);
+  const qty = Number(pick(row, ["qty", "Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0;
+  const harga = Number(pick(row, ["harga", "Harga", "hargaSatuan", "Harga Satuan"], 0)) || 0;
+  const totalField = Number(pick(row, ["total", "Total", "Total Pembelian", "totalPembelian"], 0)) || 0;
   return {
     tanggal: pick(row, ["tanggal", "Tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
     nama: bahan ? bahan.nama : (kode || pick(row, ["Nama Bahan", "namaBahan", "Nama", "nama"], "")),
-    jumlah: Number(pick(row, ["qty", "Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
+    jumlah: qty,
     satuan: bahan ? bahan.satuan : pick(row, ["satuan", "Satuan", "Unit", "unit"], ""),
-    total: Number(pick(row, ["total", "Total", "Total Pembelian", "totalPembelian"], 0)) || 0
+    /* Backend tidak menyimpan kolom total -> hitung dari qty x harga. */
+    total: totalField > 0 ? totalField : (qty * harga)
   };
 }
 
