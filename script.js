@@ -187,7 +187,125 @@ function fetchAction(action) {
     }
 
 
-    /* Nama callback unik */
+    const separator =
+      API_URL.includes("?")
+        ? "&"
+        : "?";
+
+    const fetchUrl =
+      API_URL +
+      separator +
+      "action=" +
+      encodeURIComponent(action);
+
+
+    /* Coba fetch() terlebih dahulu.
+       Apps Script Web App dengan akses "Anyone" umumnya
+       mengizinkan CORS, sehingga fetch() bisa membaca body
+       dan kita mendapatkan pesan error yang lebih jelas
+       (mis. status 401 / halaman login). Jika fetch gagal
+       karena CORS, fallback ke JSONP. */
+    fetch(fetchUrl, { method: "GET" })
+      .then((res) => {
+
+        const ct =
+          (res.headers.get("content-type") || "")
+            .toLowerCase();
+
+        const isHtml =
+          ct.includes("text/html") ||
+          ct.includes("application/xhtml");
+
+        /* Jika respons berupa HTML (biasanya halaman login
+           Google) atau status tidak ok, anggap endpoint belum
+           di-deploy dengan akses publik. */
+        if (isHtml || !res.ok) {
+
+          throw new Error(
+            "Endpoint '" + action +
+              "' mengembalikan halaman login/error (status " +
+              res.status + "). Pastikan Google Apps Script " +
+              "sudah di-deploy dengan akses 'Anyone' (anonim)."
+          );
+
+        }
+
+        return res.text();
+
+      })
+      .then((text) => {
+
+        let data;
+
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+
+          reject(
+            new Error(
+              "Respons '" + action +
+                "' bukan JSON yang valid. Periksa format " +
+                "output doGet di Apps Script."
+            )
+          );
+
+          return;
+        }
+
+        resolve(normalizeResponse(data, action));
+
+      })
+      .catch((err) => {
+
+        /* Jika error berasal dari CORS (TypeError: Failed to fetch),
+           coba JSONP sebagai fallback. Error lain (mis. halaman
+           login HTML) langsung ditolak dengan pesan yang jelas. */
+        if (
+          err instanceof TypeError &&
+          /fetch|network|load failed/i.test(err.message)
+        ) {
+          jsonpFetch(action).then(resolve, reject);
+          return;
+        }
+
+        reject(err);
+
+      });
+
+  });
+}
+
+
+/* Normalisasi berbagai format respons API menjadi array. */
+function normalizeResponse(response, action) {
+
+  if (response && Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  if (response && Array.isArray(response.rows)) {
+    return response.rows;
+  }
+
+  if (
+    response &&
+    Array.isArray(response[action])
+  ) {
+    return response[action];
+  }
+
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  return [];
+}
+
+
+/* Fallback JSONP untuk kasus CORS ketat. */
+function jsonpFetch(action) {
+
+  return new Promise((resolve, reject) => {
 
     const callbackName =
       "widCallback_" +
@@ -195,14 +313,8 @@ function fetchAction(action) {
       "_" +
       Math.floor(Math.random() * 100000);
 
-
-    /* Buat element script */
-
     const script =
       document.createElement("script");
-
-
-    /* Buat URL */
 
     const separator =
       API_URL.includes("?")
@@ -217,11 +329,7 @@ function fetchAction(action) {
       "&callback=" +
       encodeURIComponent(callbackName);
 
-
     let selesai = false;
-
-
-    /* Cleanup */
 
     function cleanup() {
 
@@ -231,44 +339,33 @@ function fetchAction(action) {
 
       selesai = true;
 
-
       try {
         delete window[callbackName];
       } catch (error) {
         window[callbackName] = undefined;
       }
 
-
       if (script.parentNode) {
         script.parentNode.removeChild(script);
       }
     }
-
-
-    /* Callback dari Apps Script */
 
     window[callbackName] = function(response) {
 
       cleanup();
 
       console.log(
-        "[WID API]",
+        "[WID API/JSONP]",
         action,
         response
       );
 
-
       if (!response) {
 
-        reject(
-          new Error(
-            "Response API kosong."
-          )
-        );
+        reject(new Error("Response API kosong."));
 
         return;
       }
-
 
       if (response.success === false) {
 
@@ -282,84 +379,9 @@ function fetchAction(action) {
         return;
       }
 
-
-      /*
-       * Format:
-       * { success:true, data:[...] }
-       */
-
-      if (
-        response &&
-        Array.isArray(response.data)
-      ) {
-
-        resolve(response.data);
-
-        return;
-      }
-
-
-      /*
-       * Format:
-       * { rows:[...] }
-       */
-
-      if (
-        response &&
-        Array.isArray(response.rows)
-      ) {
-
-        resolve(response.rows);
-
-        return;
-      }
-
-
-      /*
-       * Format:
-       * { produk:[...] }
-       * { bahan:[...] }
-       */
-
-      if (
-        response &&
-        Array.isArray(response[action])
-      ) {
-
-        resolve(response[action]);
-
-        return;
-      }
-
-
-      /*
-       * Format langsung array
-       */
-
-      if (Array.isArray(response)) {
-
-        resolve(response);
-
-        return;
-      }
-
-
-      /*
-       * Jika tidak ditemukan data,
-       * tetap return array kosong.
-       */
-
-      resolve([]);
+      resolve(normalizeResponse(response, action));
     };
 
-
-    /* Error script.
-       Catatan: jika Apps Script belum di-deploy dengan akses
-       "Anyone", server akan mengembalikan halaman login HTML.
-       Browser mencoba mengeksekusinya sebagai JS dan mencatat
-       "Unexpected end of input" di console — itu berasal dari
-       resource API, bukan dari script.js kita. Kita tangkap
-       lewat onerror dan beri pesan yang jelas. */
     script.onerror = function() {
 
       cleanup();
@@ -374,22 +396,9 @@ function fetchAction(action) {
       );
     };
 
-
-    /* Pasang URL */
-
     script.src = url;
 
-
-    /*
-     * Tambahkan ke halaman
-     */
-
     document.body.appendChild(script);
-
-
-    /*
-     * Timeout 15 detik
-     */
 
     setTimeout(() => {
 
@@ -398,10 +407,7 @@ function fetchAction(action) {
         cleanup();
 
         reject(
-          new Error(
-            "API timeout: " +
-            action
-          )
+          new Error("API timeout: " + action)
         );
 
       }
@@ -502,9 +508,12 @@ async function getProducts() {
       error
     );
 
-        SafeState.lastErrors.push({ source: "getProducts gagal:", error: error.message });
+    SafeState.lastErrors.push({
+      source: "getProducts",
+      error: error.message
+    });
 
-SafeState.products = [];
+    SafeState.products = [];
 
     return [];
 
@@ -631,9 +640,12 @@ async function getMaterials() {
       error
     );
 
-        SafeState.lastErrors.push({ source: "getMaterials gagal:", error: error.message });
+    SafeState.lastErrors.push({
+      source: "getMaterials",
+      error: error.message
+    });
 
-SafeState.materials = [];
+    SafeState.materials = [];
 
     return [];
 
@@ -671,9 +683,11 @@ async function getSales() {
       error
     );
 
-        SafeState.lastErrors.push({ source: "getSales gagal:", error: error.message });
-
-SafeState.sales = [];
+    /* Endpoint penjualan bersifat opsional pada tahap ini.
+       Jangan menandai ini sebagai error global, agar dashboard
+       tetap menampilkan produk & bahan secara normal meskipun
+       data penjualan belum tersedia / endpoint belum dibuat. */
+    SafeState.sales = [];
 
     return [];
 
@@ -705,9 +719,12 @@ async function getPurchases() {
       error
     );
 
-        SafeState.lastErrors.push({ source: "getPurchases gagal:", error: error.message });
+    SafeState.lastErrors.push({
+      source: "getPurchases",
+      error: error.message
+    });
 
-SafeState.purchases = [];
+    SafeState.purchases = [];
 
     return [];
 
@@ -738,6 +755,11 @@ async function getTransactions() {
       "getTransactions gagal:",
       error
     );
+
+    SafeState.lastErrors.push({
+      source: "getTransactions",
+      error: error.message
+    });
 
     SafeState.transactions = [];
 
@@ -901,9 +923,17 @@ function renderProdukTable(
 
 function isStokMenipis(material) {
 
+  /* Bahan tanpa batas minimum (minimum = 0 / kosong)
+     tidak dianggap menipis, agar tidak semua bahan
+     berwarna peringatan. */
+  const min = Number(material.minimum);
+
+  if (!min || min <= 0) {
+    return false;
+  }
+
   return (
-    Number(material.stok) <=
-    Number(material.minimum)
+    Number(material.stok) <= min
   );
 
 }
