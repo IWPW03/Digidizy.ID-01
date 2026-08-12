@@ -2203,25 +2203,35 @@ function onPembelianBahanChange() {
 }
 
 
-/* Normalisasi baris penjualan untuk tampilan riwayat */
+/* Normalisasi baris penjualan untuk tampilan riwayat.
+   Backend menulis header: id, tanggal, produkId, qty,
+   hargaSatuan, total, keterangan. produkId adalah kode;
+   kita terjemahkan ke nama produk bila tersedia di state. */
 function normalizeSaleRow(row) {
+  const kode = pick(row, ["produkId", "Produk", "produk", "Kode", "kode"], "");
+  const produk = findProductByKode(kode);
   return {
-    tanggal: pick(row, ["Tanggal", "tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
-    nama: pick(row, ["Produk", "produk", "Nama Produk", "namaProduk", "Nama", "nama"], ""),
-    jumlah: Number(pick(row, ["Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
-    total: Number(pick(row, ["Total", "total", "Total Penjualan", "totalPenjualan"], 0)) || 0
+    tanggal: pick(row, ["tanggal", "Tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
+    nama: produk ? produk.nama : (kode || pick(row, ["Nama Produk", "namaProduk", "Nama", "nama"], "")),
+    jumlah: Number(pick(row, ["qty", "Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
+    total: Number(pick(row, ["total", "Total", "Total Penjualan", "totalPenjualan"], 0)) || 0
   };
 }
 
 
-/* Normalisasi baris pembelian untuk tampilan riwayat */
+/* Normalisasi baris pembelian untuk tampilan riwayat.
+   Backend menulis header: id, tanggal, bahanId, qty,
+   satuan, harga, supplier, keterangan. bahanId adalah kode;
+   kita terjemahkan ke nama bahan bila tersedia di state. */
 function normalizePurchaseRow(row) {
+  const kode = pick(row, ["bahanId", "Bahan", "bahan", "Kode", "kode"], "");
+  const bahan = findMaterialByKode(kode);
   return {
-    tanggal: pick(row, ["Tanggal", "tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
-    nama: pick(row, ["Bahan", "bahan", "Nama Bahan", "namaBahan", "Nama", "nama"], ""),
-    jumlah: Number(pick(row, ["Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
-    satuan: pick(row, ["Satuan", "satuan", "Unit", "unit"], ""),
-    total: Number(pick(row, ["Total", "total", "Total Pembelian", "totalPembelian"], 0)) || 0
+    tanggal: pick(row, ["tanggal", "Tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
+    nama: bahan ? bahan.nama : (kode || pick(row, ["Nama Bahan", "namaBahan", "Nama", "nama"], "")),
+    jumlah: Number(pick(row, ["qty", "Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
+    satuan: bahan ? bahan.satuan : pick(row, ["satuan", "Satuan", "Unit", "unit"], ""),
+    total: Number(pick(row, ["total", "Total", "Total Pembelian", "totalPembelian"], 0)) || 0
   };
 }
 
@@ -2324,14 +2334,11 @@ async function submitPenjualan(event) {
 
   const payload = {
     action: "penjualan",
-    data: {
-      tanggal: new Date().toISOString(),
-      kodeProduk: produk.kode,
-      namaProduk: produk.nama,
-      jumlah: jumlah,
-      hargaSatuan: harga,
-      total: total
-    }
+    /* Backend Apps Script membaca field di top-level
+       (body.produkId, body.qty), bukan di body.data. */
+    produkId: produk.kode,
+    qty: jumlah,
+    keterangan: ""
   };
 
   const btn = $("btnPenjualan");
@@ -2395,16 +2402,13 @@ async function submitPembelian(event) {
 
   const payload = {
     action: "pembelian",
-    data: {
-      tanggal: new Date().toISOString(),
-      kodeBahan: bahan.kode,
-      namaBahan: bahan.nama,
-      jumlah: jumlah,
-      satuan: bahan.satuan || "",
-      hargaSatuan: harga,
-      total: total,
-      supplier: supplier
-    }
+    /* Backend Apps Script membaca field di top-level
+       (body.bahanId, body.qty, body.harga, body.supplier). */
+    bahanId: bahan.kode,
+    qty: jumlah,
+    harga: harga,
+    supplier: supplier,
+    keterangan: ""
   };
 
   const btn = $("btnPembelian");
