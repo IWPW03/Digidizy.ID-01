@@ -419,6 +419,98 @@ function jsonpFetch(action) {
 
 
 /* =========================================================
+   5b. POST ACTION (tulis data ke API)
+=========================================================
+
+   Apps Script Web App umumnya menerima POST dengan CORS
+   yang longgar (menerima dari domain mana pun). Kita kirim
+   JSON lewat fetch() dengan method POST. Jika server
+   memerlukan text/plain (umum untuk Apps Script), kita pakai
+   Content-Type text/plain agar tidak memicu preflight.
+
+   Format payload yang dikirim:
+     { action:"penjualan", data:{...} }
+     { action:"pembelian", data:{...} }
+
+   Backend doGet/doPost di Apps Script bertanggung jawab:
+     - menulis baris baru ke sheet terkait,
+     - membuat header kolom otomatis bila sheet masih kosong,
+     - mengupdate rolling stok bahan/produk.
+========================================================= */
+
+function postAction(payload) {
+
+  return new Promise((resolve, reject) => {
+
+    if (!API_URL) {
+      reject(new Error("API_URL belum dikonfigurasi."));
+      return;
+    }
+
+    const body = JSON.stringify(payload);
+
+    fetch(API_URL, {
+      method: "POST",
+      /* text/plain menghindari preflight CORS pada Apps Script */
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: body
+    })
+      .then((res) => {
+
+        const ct =
+          (res.headers.get("content-type") || "")
+            .toLowerCase();
+
+        if (ct.includes("text/html") || !res.ok) {
+          throw new Error(
+            "Gagal menyimpan: server mengembalikan status " +
+              res.status + ". Pastikan Apps Script sudah " +
+              "di-deploy akses 'Anyone'."
+          );
+        }
+
+        return res.text();
+
+      })
+      .then((text) => {
+
+        let data;
+
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          /* Beberapa Apps Script mengembalikan teks biasa
+             seperti "OK". Anggap sukses bila bukan HTML. */
+          resolve({ success: true, raw: text });
+          return;
+        }
+
+        if (data && data.success === false) {
+          reject(
+            new Error(data.message || "API menolak data.")
+          );
+          return;
+        }
+
+        resolve(data || { success: true });
+
+      })
+      .catch((err) => {
+
+        reject(
+          new Error(
+            "Gagal mengirim data ke server: " +
+              (err && err.message ? err.message : "network error")
+          )
+        );
+
+      });
+
+  });
+}
+
+
+/* =========================================================
    6. GET PRODUK
 ========================================================= */
 
@@ -719,11 +811,8 @@ async function getPurchases() {
       error
     );
 
-    SafeState.lastErrors.push({
-      source: "getPurchases",
-      error: error.message
-    });
-
+    /* Endpoint pembelian bersifat opsional pada tahap ini.
+       Jangan menandai ini sebagai error global. */
     SafeState.purchases = [];
 
     return [];
@@ -1478,6 +1567,22 @@ async function loadDashboard() {
 
 
     /*
+     * Inisialisasi form transaksi (dropdown produk/bahan)
+     * & muat riwayat penjualan/pembelian.
+     */
+
+    initTransactionForms();
+
+    getSales()
+      .then(renderPenjualanTable)
+      .catch(() => renderPenjualanTable([]));
+
+    getPurchases()
+      .then(renderPembelianTable)
+      .catch(() => renderPembelianTable([]));
+
+
+    /*
      * Status
      */
 
@@ -1664,6 +1769,19 @@ function switchView(view) {
    */
 
   closeMobileMenu();
+
+
+  /*
+   * Muat data sesuai view (untuk form & riwayat transaksi)
+   */
+
+  if (view === "penjualan") {
+    initTransactionForms();
+    getSales().then(renderPenjualanTable).catch(() => {});
+  } else if (view === "pembelian") {
+    initTransactionForms();
+    getPurchases().then(renderPembelianTable).catch(() => {});
+  }
 
 
   /*
@@ -1885,6 +2003,501 @@ function bindEvents() {
     }
   );
 
+}
+
+
+/* =========================================================
+   24b. TRANSAKSI — FORM INPUT & ROLLING STOK
+=========================================================
+
+   - Mengisi dropdown produk/bahan dari state.
+   - Menghitung total otomatis.
+   - Mengirim POST ke API (postAction).
+   - Backend Apps Script bertanggung jawab membuat header
+     kolom otomatis & mengupdate stok bahan (rolling stok).
+   - Setelah sukses, reload dashboard agar KPI/stok terbaru.
+========================================================= */
+
+/* Tampilkan pesan kecil di dalam form */
+function showTxMessage(formId, type, message) {
+
+  let msg = document.getElementById(formId + "Msg");
+
+  if (!msg) {
+    msg = document.createElement("div");
+    msg.id = formId + "Msg";
+    msg.className = "tx-form-msg";
+    const form = document.getElementById(formId);
+    if (form) form.appendChild(msg);
+  }
+
+  msg.className = "tx-form-msg show " + type;
+  msg.textContent = message;
+
+  if (type === "ok") {
+    setTimeout(() => {
+      msg.className = "tx-form-msg";
+      msg.textContent = "";
+    }, 4000);
+  }
+}
+
+
+/* Isi dropdown produk (untuk form penjualan) */
+function populateProdukSelect() {
+
+  const select = $("penjualanProduk");
+
+  if (!select) return;
+
+  /* Simpan nilai terpilih */
+  const prev = select.value;
+
+  select.innerHTML =
+    '<option value="">— Pilih produk —</option>';
+
+  SafeState.products
+    .filter(isProdukAktif)
+    .forEach((p) => {
+
+      const opt =
+        document.createElement("option");
+
+      opt.value = p.kode;
+      opt.textContent =
+        (p.nama || "Tanpa Nama") +
+        (p.kode ? " (" + p.kode + ")" : "");
+
+      /* Simpan harga di data atribut */
+      opt.dataset.harga = p.harga || 0;
+
+      select.appendChild(opt);
+
+    });
+
+  if (prev) select.value = prev;
+}
+
+
+/* Isi dropdown bahan (untuk form pembelian) */
+function populateBahanSelect() {
+
+  const select = $("pembelianBahan");
+
+  if (!select) return;
+
+  const prev = select.value;
+
+  select.innerHTML =
+    '<option value="">— Pilih bahan —</option>';
+
+  SafeState.materials.forEach((m) => {
+
+    const opt =
+      document.createElement("option");
+
+    opt.value = m.kode;
+    opt.textContent =
+      (m.nama || "Tanpa Nama") +
+      (m.kode ? " (" + m.kode + ")" : "");
+
+    opt.dataset.satuan = m.satuan || "";
+    opt.dataset.stok = m.stok || 0;
+
+    select.appendChild(opt);
+
+  });
+
+  if (prev) select.value = prev;
+}
+
+
+/* Cari objek produk by kode */
+function findProductByKode(kode) {
+  return SafeState.products.find(
+    (p) => String(p.kode) === String(kode)
+  );
+}
+
+
+/* Cari objek bahan by kode */
+function findMaterialByKode(kode) {
+  return SafeState.materials.find(
+    (m) => String(m.kode) === String(kode)
+  );
+}
+
+
+/* Hitung & tampilkan total penjualan (form) */
+function recalcPenjualanTotal() {
+
+  const jml = Number($("penjualanJumlah")?.value) || 0;
+  const hrg = Number($("penjualanHarga")?.value) || 0;
+  const totalEl = $("penjualanTotal");
+
+  if (totalEl) {
+    totalEl.value = formatRupiah(jml * hrg).replace("Rp ", "Rp ");
+  }
+}
+
+
+/* Hitung & tampilkan total pembelian (form) */
+function recalcPembelianTotal() {
+
+  const jml = Number($("pembelianJumlah")?.value) || 0;
+  const hrg = Number($("pembelianHarga")?.value) || 0;
+  const totalEl = $("pembelianTotal");
+
+  if (totalEl) {
+    totalEl.value = formatRupiah(jml * hrg);
+  }
+}
+
+
+/* Saat produk dipilih di form penjualan,
+   isi harga otomatis dari data produk. */
+function onPenjualanProdukChange() {
+
+  const kode = $("penjualanProduk")?.value || "";
+  const hargaInput = $("penjualanHarga");
+  const info = $("penjualanHargaInfo");
+
+  const produk = findProductByKode(kode);
+
+  if (produk && hargaInput) {
+    hargaInput.value = produk.harga || 0;
+  }
+
+  if (info) {
+    info.textContent = produk
+      ? "Harga jual: " + formatRupiah(produk.harga)
+      : "Harga: —";
+  }
+
+  recalcPenjualanTotal();
+}
+
+
+/* Saat bahan dipilih di form pembelian,
+   isi satuan & tampilkan stok saat ini. */
+function onPembelianBahanChange() {
+
+  const kode = $("pembelianBahan")?.value || "";
+  const satuanInput = $("pembelianSatuan");
+  const info = $("pembelianStokInfo");
+
+  const bahan = findMaterialByKode(kode);
+
+  if (bahan && satuanInput) {
+    satuanInput.value = bahan.satuan || "";
+  }
+
+  if (info) {
+    info.textContent = bahan
+      ? "Stok saat ini: " + formatNumber(bahan.stok) +
+        (bahan.satuan ? " " + bahan.satuan : "")
+      : "Stok saat ini: —";
+  }
+
+  recalcPembelianTotal();
+}
+
+
+/* Normalisasi baris penjualan untuk tampilan riwayat */
+function normalizeSaleRow(row) {
+  return {
+    tanggal: pick(row, ["Tanggal", "tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
+    nama: pick(row, ["Produk", "produk", "Nama Produk", "namaProduk", "Nama", "nama"], ""),
+    jumlah: Number(pick(row, ["Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
+    total: Number(pick(row, ["Total", "total", "Total Penjualan", "totalPenjualan"], 0)) || 0
+  };
+}
+
+
+/* Normalisasi baris pembelian untuk tampilan riwayat */
+function normalizePurchaseRow(row) {
+  return {
+    tanggal: pick(row, ["Tanggal", "tanggal", "Date", "date", "Waktu", "waktu", "Timestamp", "timestamp"], ""),
+    nama: pick(row, ["Bahan", "bahan", "Nama Bahan", "namaBahan", "Nama", "nama"], ""),
+    jumlah: Number(pick(row, ["Jumlah", "jumlah", "Qty", "qty", "Quantity"], 0)) || 0,
+    satuan: pick(row, ["Satuan", "satuan", "Unit", "unit"], ""),
+    total: Number(pick(row, ["Total", "total", "Total Pembelian", "totalPembelian"], 0)) || 0
+  };
+}
+
+
+/* Render tabel riwayat penjualan */
+function renderPenjualanTable(rows) {
+
+  const tbody = $("penjualanTbody");
+  const countEl = $("penjualanCount");
+
+  if (!tbody) return;
+
+  const items = (rows || []).map(normalizeSaleRow);
+
+  if (!items.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="4" class="empty-cell">Belum ada transaksi penjualan.</td></tr>';
+    if (countEl) countEl.textContent = "0 transaksi";
+    return;
+  }
+
+  /* Tampilkan 10 terbaru (asumsi urutan terbaru di akhir) */
+  const recent = items.slice(-10).reverse();
+
+  tbody.innerHTML = recent
+    .map((r) => `
+      <tr>
+        <td>${escapeHtml(String(r.tanggal).substring(0, 10))}</td>
+        <td>${escapeHtml(r.nama)}</td>
+        <td class="td-right">${formatNumber(r.jumlah)}</td>
+        <td class="td-right">${formatRupiah(r.total)}</td>
+      </tr>
+    `)
+    .join("");
+
+  if (countEl) {
+    countEl.textContent = items.length + " transaksi";
+  }
+}
+
+
+/* Render tabel riwayat pembelian */
+function renderPembelianTable(rows) {
+
+  const tbody = $("pembelianTbody");
+  const countEl = $("pembelianCount");
+
+  if (!tbody) return;
+
+  const items = (rows || []).map(normalizePurchaseRow);
+
+  if (!items.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="4" class="empty-cell">Belum ada transaksi pembelian.</td></tr>';
+    if (countEl) countEl.textContent = "0 transaksi";
+    return;
+  }
+
+  const recent = items.slice(-10).reverse();
+
+  tbody.innerHTML = recent
+    .map((r) => `
+      <tr>
+        <td>${escapeHtml(String(r.tanggal).substring(0, 10))}</td>
+        <td>${escapeHtml(r.nama)}</td>
+        <td class="td-right">${formatNumber(r.jumlah)}${r.satuan ? " " + escapeHtml(r.satuan) : ""}</td>
+        <td class="td-right">${formatRupiah(r.total)}</td>
+      </tr>
+    `)
+    .join("");
+
+  if (countEl) {
+    countEl.textContent = items.length + " transaksi";
+  }
+}
+
+
+/* Submit penjualan */
+async function submitPenjualan(event) {
+
+  event.preventDefault();
+
+  const kode = $("penjualanProduk")?.value;
+  const produk = findProductByKode(kode);
+
+  if (!produk) {
+    showTxMessage("formPenjualan", "err", "Pilih produk dulu.");
+    return;
+  }
+
+  const jumlah = Number($("penjualanJumlah")?.value) || 0;
+  const harga = Number($("penjualanHarga")?.value) || 0;
+
+  if (jumlah <= 0) {
+    showTxMessage("formPenjualan", "err", "Jumlah harus lebih dari 0.");
+    return;
+  }
+
+  const total = jumlah * harga;
+
+  const payload = {
+    action: "penjualan",
+    data: {
+      tanggal: new Date().toISOString(),
+      kodeProduk: produk.kode,
+      namaProduk: produk.nama,
+      jumlah: jumlah,
+      hargaSatuan: harga,
+      total: total
+    }
+  };
+
+  const btn = $("btnPenjualan");
+  if (btn) btn.disabled = true;
+  showTxMessage("formPenjualan", "ok", "Mengirim data...");
+
+  try {
+
+    await postAction(payload);
+
+    showTxMessage("formPenjualan", "ok", "Penjualan tersimpan! Stok bahan diperbarui.");
+
+    /* Reset form */
+    const form = $("formPenjualan");
+    if (form) form.reset();
+    if ($("penjualanHargaInfo")) $("penjualanHargaInfo").textContent = "Harga: —";
+    if ($("penjualanTotal")) $("penjualanTotal").value = "";
+
+    /* Reload dashboard untuk update KPI & stok */
+    loadDashboard();
+
+    /* Refresh riwayat penjualan */
+    getSales().then(renderPenjualanTable).catch(() => {});
+
+  } catch (error) {
+
+    console.error("submitPenjualan gagal:", error);
+    showTxMessage("formPenjualan", "err", error.message || "Gagal menyimpan penjualan.");
+
+  } finally {
+
+    if (btn) btn.disabled = false;
+
+  }
+}
+
+
+/* Submit pembelian */
+async function submitPembelian(event) {
+
+  event.preventDefault();
+
+  const kode = $("pembelianBahan")?.value;
+  const bahan = findMaterialByKode(kode);
+
+  if (!bahan) {
+    showTxMessage("formPembelian", "err", "Pilih bahan dulu.");
+    return;
+  }
+
+  const jumlah = Number($("pembelianJumlah")?.value) || 0;
+  const harga = Number($("pembelianHarga")?.value) || 0;
+  const supplier = $("pembelianSupplier")?.value || "";
+
+  if (jumlah <= 0) {
+    showTxMessage("formPembelian", "err", "Jumlah harus lebih dari 0.");
+    return;
+  }
+
+  const total = jumlah * harga;
+
+  const payload = {
+    action: "pembelian",
+    data: {
+      tanggal: new Date().toISOString(),
+      kodeBahan: bahan.kode,
+      namaBahan: bahan.nama,
+      jumlah: jumlah,
+      satuan: bahan.satuan || "",
+      hargaSatuan: harga,
+      total: total,
+      supplier: supplier
+    }
+  };
+
+  const btn = $("btnPembelian");
+  if (btn) btn.disabled = true;
+  showTxMessage("formPembelian", "ok", "Mengirim data...");
+
+  try {
+
+    await postAction(payload);
+
+    showTxMessage("formPembelian", "ok", "Pembelian tersimpan! Stok bahan bertambah otomatis.");
+
+    const form = $("formPembelian");
+    if (form) form.reset();
+    if ($("pembelianStokInfo")) $("pembelianStokInfo").textContent = "Stok saat ini: —";
+    if ($("pembelianTotal")) $("pembelianTotal").value = "";
+
+    loadDashboard();
+
+    getMaterials().then(() => {
+      populateBahanSelect();
+    }).catch(() => {});
+
+    getPurchases().then(renderPembelianTable).catch(() => {});
+
+  } catch (error) {
+
+    console.error("submitPembelian gagal:", error);
+    showTxMessage("formPembelian", "err", error.message || "Gagal menyimpan pembelian.");
+
+  } finally {
+
+    if (btn) btn.disabled = false;
+
+  }
+}
+
+
+/* Inisialisasi form transaksi (dipanggil setelah data produk/bahan siap) */
+function initTransactionForms() {
+
+  populateProdukSelect();
+  populateBahanSelect();
+
+  /* Penjualan: perubahan produk & jumlah/harga */
+  const pProduk = $("penjualanProduk");
+  if (pProduk && !pProduk.dataset.bound) {
+    pProduk.addEventListener("change", onPenjualanProdukChange);
+    pProduk.dataset.bound = "1";
+  }
+
+  const pJumlah = $("penjualanJumlah");
+  if (pJumlah && !pJumlah.dataset.bound) {
+    pJumlah.addEventListener("input", recalcPenjualanTotal);
+    pJumlah.dataset.bound = "1";
+  }
+
+  const pHarga = $("penjualanHarga");
+  if (pHarga && !pHarga.dataset.bound) {
+    pHarga.addEventListener("input", recalcPenjualanTotal);
+    pHarga.dataset.bound = "1";
+  }
+
+  const formPenjualan = $("formPenjualan");
+  if (formPenjualan && !formPenjualan.dataset.bound) {
+    formPenjualan.addEventListener("submit", submitPenjualan);
+    formPenjualan.dataset.bound = "1";
+  }
+
+  /* Pembelian: perubahan bahan & jumlah/harga */
+  const bBahan = $("pembelianBahan");
+  if (bBahan && !bBahan.dataset.bound) {
+    bBahan.addEventListener("change", onPembelianBahanChange);
+    bBahan.dataset.bound = "1";
+  }
+
+  const bJumlah = $("pembelianJumlah");
+  if (bJumlah && !bJumlah.dataset.bound) {
+    bJumlah.addEventListener("input", recalcPembelianTotal);
+    bJumlah.dataset.bound = "1";
+  }
+
+  const bHarga = $("pembelianHarga");
+  if (bHarga && !bHarga.dataset.bound) {
+    bHarga.addEventListener("input", recalcPembelianTotal);
+    bHarga.dataset.bound = "1";
+  }
+
+  const formPembelian = $("formPembelian");
+  if (formPembelian && !formPembelian.dataset.bound) {
+    formPembelian.addEventListener("submit", submitPembelian);
+    formPembelian.dataset.bound = "1";
+  }
 }
 
 

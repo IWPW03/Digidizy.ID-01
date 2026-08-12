@@ -221,23 +221,145 @@
       </section>
 
       <section class="view" id="view-pembelian">
-        <article class="panel placeholder-panel">
-          <div class="panel-body placeholder-body">
-            <span class="ph-icon">📥</span>
-            <h2>Pembelian</h2>
-            <p>Modul pencatatan pembelian bahan akan tersedia di versi berikutnya.</p>
-          </div>
-        </article>
+        <div class="grid-two">
+          <!-- Form input pembelian -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Input Pembelian Bahan</h2>
+              <span class="panel-tag">Catat pembelian</span>
+            </div>
+            <div class="panel-body">
+              <form id="formPembelian" class="tx-form" autocomplete="off">
+                <div class="form-row">
+                  <label for="pembelianBahan">Bahan</label>
+                  <select id="pembelianBahan" required>
+                    <option value="">— Pilih bahan —</option>
+                  </select>
+                  <small class="form-hint" id="pembelianStokInfo">Stok saat ini: —</small>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-row">
+                    <label for="pembelianJumlah">Jumlah</label>
+                    <input type="number" id="pembelianJumlah" min="0" step="any" placeholder="0" required />
+                  </div>
+                  <div class="form-row">
+                    <label for="pembelianSatuan">Satuan</label>
+                    <input type="text" id="pembelianSatuan" placeholder="kg / liter / pcs" readonly />
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-row">
+                    <label for="pembelianHarga">Harga Satuan (Rp)</label>
+                    <input type="number" id="pembelianHarga" min="0" step="any" placeholder="0" required />
+                  </div>
+                  <div class="form-row">
+                    <label for="pembelianSupplier">Supplier</label>
+                    <input type="text" id="pembelianSupplier" placeholder="Nama supplier (opsional)" />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <label for="pembelianTotal">Total (Rp)</label>
+                  <input type="text" id="pembelianTotal" placeholder="Rp 0" readonly />
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" id="btnPembelian">Simpan Pembelian</button>
+                  <button type="reset" class="btn btn-ghost">Reset</button>
+                </div>
+              </form>
+            </div>
+          </article>
+
+          <!-- Daftar pembelian terbaru -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Riwayat Pembelian</h2>
+              <span class="panel-tag" id="pembelianCount">0 transaksi</span>
+            </div>
+            <div class="panel-body panel-table">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Tanggal</th>
+                      <th>Bahan</th>
+                      <th class="th-right">Jumlah</th>
+                      <th class="th-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pembelianTbody">
+                    <tr><td colspan="4" class="empty-cell">Memuat data pembelian...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section class="view" id="view-penjualan">
-        <article class="panel placeholder-panel">
-          <div class="panel-body placeholder-body">
-            <span class="ph-icon">📤</span>
-            <h2>Penjualan</h2>
-            <p>Modul pencatatan penjualan akan tersedia di versi berikutnya.</p>
-          </div>
-        </article>
+        <div class="grid-two">
+          <!-- Form input penjualan -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Input Penjualan</h2>
+              <span class="panel-tag">Catat transaksi</span>
+            </div>
+            <div class="panel-body">
+              <form id="formPenjualan" class="tx-form" autocomplete="off">
+                <div class="form-row">
+                  <label for="penjualanProduk">Produk</label>
+                  <select id="penjualanProduk" required>
+                    <option value="">— Pilih produk —</option>
+                  </select>
+                  <small class="form-hint" id="penjualanHargaInfo">Harga: —</small>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-row">
+                    <label for="penjualanJumlah">Jumlah</label>
+                    <input type="number" id="penjualanJumlah" min="1" step="1" placeholder="1" required />
+                  </div>
+                  <div class="form-row">
+                    <label for="penjualanHarga">Harga Satuan (Rp)</label>
+                    <input type="number" id="penjualanHarga" min="0" step="any" placeholder="0" required />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <label for="penjualanTotal">Total (Rp)</label>
+                  <input type="text" id="penjualanTotal" placeholder="Rp 0" readonly />
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" id="btnPenjualan">Simpan Penjualan</button>
+                  <button type="reset" class="btn btn-ghost">Reset</button>
+                </div>
+              </form>
+            </div>
+          </article>
+
+          <!-- Daftar penjualan terbaru -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Riwayat Penjualan</h2>
+              <span class="panel-tag" id="penjualanCount">0 transaksi</span>
+            </div>
+            <div class="panel-body panel-table">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Tanggal</th>
+                      <th>Produk</th>
+                      <th class="th-right">Jumlah</th>
+                      <th class="th-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="penjualanTbody">
+                    <tr><td colspan="4" class="empty-cell">Memuat data penjualan...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section class="view" id="view-laporan">
