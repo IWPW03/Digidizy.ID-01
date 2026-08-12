@@ -16,7 +16,7 @@
 ========================================================= */
 
 const API_URL =
-  "https://script.google.com/macros/s/AKfycbzc04bZ7ilAOlxCASJBczwNAw3DBVjutv3qB4I4EbDyIZ45eE8Qg2HHIaIDOtO7PEwp3A/exec";
+  "https://script.google.com/macros/s/AKfycbwhalH-jN7xme5y_P5PDOIYA05zBsyxrdxqZOxYNasF2-w9ft8E93bOc6aM2_vRyYpPIw/exec";
 
 
 /* =========================================================
@@ -451,7 +451,11 @@ function postAction(payload) {
 
     fetch(API_URL, {
       method: "POST",
-      /* text/plain menghindari preflight CORS pada Apps Script */
+      /* text/plain menghindari preflight CORS pada Apps Script.
+         redirect:follow agar fetch mengikuti 302 dari
+         script.google.com ke script.googleusercontent.com
+         (yang mengembalikan JSON asli). */
+      redirect: "follow",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: body
     })
@@ -461,11 +465,13 @@ function postAction(payload) {
           (res.headers.get("content-type") || "")
             .toLowerCase();
 
-        if (ct.includes("text/html") || !res.ok) {
+        /* Apps Script mengembalikan JSON (application/json atau
+           text/plain) setelah redirect. Bila ternyata HTML,
+           kemungkinan redirect tidak diikuti / auth wall. */
+        if (ct.includes("text/html")) {
           throw new Error(
-            "Gagal menyimpan: server mengembalikan status " +
-              res.status + ". Pastikan Apps Script sudah " +
-              "di-deploy akses 'Anyone'."
+            "Server mengembalikan halaman (bukan JSON). " +
+              "Pastikan Apps Script di-deploy akses 'Anyone'."
           );
         }
 
@@ -479,8 +485,7 @@ function postAction(payload) {
         try {
           data = JSON.parse(text);
         } catch (e) {
-          /* Beberapa Apps Script mengembalikan teks biasa
-             seperti "OK". Anggap sukses bila bukan HTML. */
+          /* Teks non-JSON (mis. "OK") -> anggap sukses. */
           resolve({ success: true, raw: text });
           return;
         }
